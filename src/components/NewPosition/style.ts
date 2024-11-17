@@ -123,11 +123,26 @@ const useStyles = makeStyles()(theme => {
         maxWidth: 'none'
       }
     },
+    jupiterContainer: {
+      display: 'flex',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '1em'
+    },
     optionsWrapper: {
       display: 'flex',
       alignItems: 'center',
       flex: 1,
       justifyContent: 'flex-end'
+    },
+    indexed: {
+      opacity: '1',
+      cursor: 'pointer'
+    },
+    notIndexed: {
+      opacity: '0.2',
+      cursor: 'pointer'
     }
   }
 })

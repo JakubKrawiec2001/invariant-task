@@ -1,7 +1,7 @@
 import { ProgressState } from '@components/AnimatedButton/AnimatedButton'
 import Slippage from '@components/Modals/Slippage/Slippage'
 import Refresher from '@components/Refresher/Refresher'
-import { Box, Button, Grid, Hidden, Typography } from '@mui/material'
+import { Box, Button, Grid, Hidden, Tooltip, Typography } from '@mui/material'
 import backIcon from '@static/svg/back-arrow.svg'
 import settingIcon from '@static/svg/settings.svg'
 import {
@@ -43,6 +43,10 @@ import { INoConnected } from '@components/NoConnected/NoConnected'
 import { fromFee, getConcentrationArray, getMinTick } from '@invariant-labs/sdk/lib/utils'
 import { getMaxTick } from '@invariant-labs/sdk/src/utils'
 import { TooltipHover } from '@components/TooltipHover/TooltipHover'
+import jupiterLogo from '../../../public/jupiter-logo.png'
+import CircularProgress from '@mui/material/CircularProgress'
+import JupiterPopup from './JupiterPopup/JupiterPopup'
+import axios from 'axios'
 
 export interface INewPosition {
   initialTokenFrom: string
@@ -125,6 +129,10 @@ export interface INewPosition {
   onConnectWallet: () => void
   onDisconnectWallet: () => void
   canNavigate: boolean
+}
+
+export interface MarketDataItemType {
+  pubkey: string
 }
 
 export const NewPosition: React.FC<INewPosition> = ({
@@ -216,6 +224,10 @@ export const NewPosition: React.FC<INewPosition> = ({
   const [refresherTime, setRefresherTime] = React.useState<number>(REFRESHER_INTERVAL)
 
   const [shouldReversePlot, setShouldReversePlot] = useState(false)
+
+  const [fetchedData, setFetchedData] = useState<MarketDataItemType[] | null>()
+  const [isIndexed, setIsIndexed] = useState<boolean | null>(null)
+  const [isOpenJupiterPopup, setIsOpenJupiterPopup] = useState(false)
 
   const concentrationArray = useMemo(() => {
     const validatedMidPrice = validConcentrationMidPriceTick(midPrice.index, isXtoY, tickSpacing)
@@ -370,11 +382,11 @@ export const NewPosition: React.FC<INewPosition> = ({
   const bestTierIndex =
     tokenA === null || tokenB === null
       ? undefined
-      : (bestTiers.find(
+      : bestTiers.find(
           tier =>
             (tier.tokenX.equals(tokenA) && tier.tokenY.equals(tokenB)) ||
             (tier.tokenX.equals(tokenB) && tier.tokenY.equals(tokenA))
-        )?.bestTierIndex ?? undefined)
+        )?.bestTierIndex ?? undefined
 
   const getMinSliderIndex = () => {
     let minimumSliderIndex = 0
@@ -510,6 +522,45 @@ export const NewPosition: React.FC<INewPosition> = ({
     [leftRange, rightRange, currentPriceSqrt]
   )
 
+  const checkIndexStatus = async () => {
+    try {
+      const response = await axios.get(`https://cache.jup.ag/markets?v=3`)
+      const data = response.data
+      setFetchedData(data)
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('Data download error:', error.message)
+      } else {
+        console.error('Unknown error occurred:', error)
+      }
+      setFetchedData(null)
+    }
+  }
+
+  const checkIndexedPool = (data, poolAddress) => {
+    const dataMap = new Map(data.map(item => [item.pubkey, true]))
+    const indexed = dataMap.has(poolAddress)
+    return indexed
+  }
+
+  useEffect(() => {
+    if (poolAddress && tokenA && tokenB) {
+      checkIndexStatus()
+    }
+  }, [poolAddress, tokenA, tokenB])
+
+  useEffect(() => {
+    if (fetchedData && poolAddress) {
+      setIsIndexed(checkIndexedPool(fetchedData, poolAddress))
+    } else {
+      setIsIndexed(null)
+    }
+  }, [fetchedData, poolAddress])
+
+  const handleJupiterPopup = () => {
+    setIsOpenJupiterPopup(prev => !prev)
+  }
+
   return (
     <Grid container className={classes.wrapper} direction='column'>
       <Link to='/liquidity' style={{ textDecoration: 'none', maxWidth: 'fit-content' }}>
@@ -526,21 +577,48 @@ export const NewPosition: React.FC<INewPosition> = ({
         className={classes.headerContainer}>
         <Box className={classes.titleContainer}>
           <Typography className={classes.title}>Add new position</Typography>
-          {poolIndex !== null && tokenA !== tokenB && (
-            <TooltipHover text='Refresh'>
-              <Box>
-                <Refresher
-                  currentIndex={refresherTime}
-                  maxIndex={REFRESHER_INTERVAL}
-                  onClick={() => {
-                    onRefresh()
-                    setRefresherTime(REFRESHER_INTERVAL)
-                  }}
-                />
-              </Box>
-            </TooltipHover>
-          )}
+          <Box className={classes.jupiterContainer}>
+            {poolIndex !== null && tokenA !== tokenB && (
+              <TooltipHover text='Refresh'>
+                <Box>
+                  <Refresher
+                    currentIndex={refresherTime}
+                    maxIndex={REFRESHER_INTERVAL}
+                    onClick={() => {
+                      onRefresh()
+                      setRefresherTime(REFRESHER_INTERVAL)
+                    }}
+                  />
+                </Box>
+              </TooltipHover>
+            )}
+            {tokenA && tokenB ? (
+              poolAddress ? (
+                isIndexed === null ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <Tooltip title={isIndexed ? 'This pool is indexed' : 'This pool is not indexed'}>
+                    <img
+                      src={jupiterLogo}
+                      alt={isIndexed ? 'Indexed' : 'Not Indexed'}
+                      className={isIndexed ? classes.indexed : classes.notIndexed}
+                      onClick={handleJupiterPopup}
+                    />
+                  </Tooltip>
+                )
+              ) : (
+                <Typography variant='body2' color='error'>
+                  Pool does not exist yet
+                </Typography>
+              )
+            ) : null}
+          </Box>
         </Box>
+        <JupiterPopup
+          open={isOpenJupiterPopup}
+          onClose={handleJupiterPopup}
+          isIndexed={isIndexed}
+        />
         {tokenA !== null && tokenB !== null && (
           <Grid container item alignItems='center' className={classes.options}>
             {poolIndex !== null ? (
